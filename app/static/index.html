@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Nimbus Assistant</title>
+  <style>
+    :root {
+      --bg: #f4f5f7; --panel: #ffffff; --text: #1b1f24; --muted: #5b6470;
+      --accent: #2f5bea; --accent-text: #ffffff; --bot: #eef1f5; --border: #d9dee5; --error: #b42318;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #0f1216; --panel: #171b21; --text: #e6e9ee; --muted: #9aa3ae;
+        --accent: #6d8cff; --accent-text: #0f1216; --bot: #222831; --border: #2c333d; --error: #ff8a80;
+      }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--text); }
+    main { max-width: 720px; margin: 0 auto; padding: 16px; height: 100dvh; display: flex; flex-direction: column; gap: 12px; }
+    header h1 { margin: 0; font-size: 18px; }
+    header p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+    #log { flex: 1; overflow-y: auto; background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+    .msg { max-width: 85%; padding: 8px 12px; border-radius: 12px; white-space: pre-wrap; overflow-wrap: anywhere; }
+    .user { align-self: flex-end; background: var(--accent); color: var(--accent-text); }
+    .assistant { align-self: flex-start; background: var(--bot); }
+    .error { align-self: flex-start; color: var(--error); border: 1px solid var(--error); background: transparent; }
+    .typing::after { content: "▍"; animation: blink 1s steps(1) infinite; }
+    @keyframes blink { 50% { opacity: 0; } }
+    @media (prefers-reduced-motion: reduce) { .typing::after { animation: none; } }
+    #suggestions { display: flex; flex-wrap: wrap; gap: 8px; }
+    #suggestions button { font: inherit; font-size: 13px; padding: 6px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--panel); color: var(--text); cursor: pointer; }
+    form { display: flex; gap: 8px; }
+    input { flex: 1; min-width: 0; font: inherit; padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--panel); color: var(--text); }
+    form button { font: inherit; padding: 10px 16px; border-radius: 10px; border: 0; background: var(--accent); color: var(--accent-text); cursor: pointer; }
+    button:disabled, input:disabled { opacity: .6; cursor: not-allowed; }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Nimbus Assistant</h1>
+    <p>Front mínimo de teste do endpoint <code>POST /chat</code> (SSE). Empresa fictícia.</p>
+  </header>
+
+  <div id="log" role="log" aria-live="polite" aria-label="Conversa"></div>
+
+  <div id="suggestions">
+    <button type="button">Quais serviços vocês oferecem?</button>
+    <button type="button">Tenho uma ideia de app, por onde começo?</button>
+    <button type="button">Vocês fazem integração entre sistemas?</button>
+  </div>
+
+  <form id="form">
+    <input id="input" aria-label="Mensagem" autocomplete="off" maxlength="4000" placeholder="Digite sua mensagem..." required>
+    <button id="send" type="submit">Enviar</button>
+  </form>
+</main>
+
+<script>
+  const MAX_TURNS = 20;            // espelha MAX_TURNS do servidor
+  const log = document.getElementById("log");
+  const form = document.getElementById("form");
+  const input = document.getElementById("input");
+  const sendBtn = document.getElementById("send");
+  const suggestions = document.getElementById("suggestions");
+
+  // Histórico mantido no cliente: o servidor não guarda estado.
+  const history = [];
+
+  function addBubble(role, text) {
+    const el = document.createElement("div");
+    el.className = "msg " + role;
+    el.textContent = text;          // textContent: nunca interpretamos HTML vindo do modelo
+    log.appendChild(el);
+    log.scrollTop = log.scrollHeight;
+    return el;
+  }
+
+  function setBusy(busy) {
+    input.disabled = busy;
+    sendBtn.disabled = busy;
+    suggestions.querySelectorAll("button").forEach(b => b.disabled = busy);
+  }
+
+  // Lê um corpo SSE e chama onEvent(nome, dados) para cada evento completo.
+  async function readSSE(response, onEvent) {
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true }).replace(/\r\n/g, "\n");
+      let sep;
+      while ((sep = buffer.indexOf("\n\n")) !== -1) {    // eventos terminam com linha em branco
+        const raw = buffer.slice(0, sep);
+        buffer = buffer.slice(sep + 2);
+        let event = "message", data = "";
+        for (const line of raw.split("\n")) {
+          if (line.startsWith("event:")) event = line.slice(6).trim();
+          else if (line.startsWith("data:")) data += line.slice(5).trim();
+        }
+        if (data) onEvent(event, JSON.parse(data));
+      }
+    }
+  }
+
+  async function send(text) {
+    text = text.trim();
+    if (!text) return;
+    suggestions.hidden = true;
+    history.push({ role: "user", content: text });
+    addBubble("user", text);
+    setBusy(true);
+
+    const bubble = addBubble("assistant typing", "");
+    let answer = "";
+
+    try {
+      const response = await fetch("/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ messages: history.slice(-MAX_TURNS) }),
+      });
+
+      if (!response.ok) {
+        const body = await response.json().catch(() => null);
+        throw new Error(body?.error?.message || `Erro HTTP ${response.status}`);
+      }
+
+      await readSSE(response, (event, data) => {
+        if (event === "token") {
+          answer += data.text;
+          bubble.textContent = answer;
+          log.scrollTop = log.scrollHeight;
+        } else if (event === "error") {
+          throw new Error(data.message);
+        }
+      });
+
+      if (answer) history.push({ role: "assistant", content: answer });
+      else bubble.textContent = "(resposta vazia)";
+    } catch (err) {
+      // Mantém o texto parcial (se houver) e mostra o erro separado.
+      if (!answer) bubble.remove();
+      else history.push({ role: "assistant", content: answer });
+      addBubble("error", err.message || "Erro de conexão.");
+      if (!answer) history.pop();   // remove a pergunta sem resposta para o usuário reenviar
+    } finally {
+      bubble.classList.remove("typing");
+      setBusy(false);
+      input.focus();
+    }
+  }
+
+  form.addEventListener("submit", (e) => {
+    e.preventDefault();
+    const text = input.value;
+    input.value = "";
+    send(text);
+  });
+  suggestions.addEventListener("click", (e) => {
+    if (e.target.tagName === "BUTTON") send(e.target.textContent);
+  });
+
+  addBubble("assistant", "Olá! Sou o assistente virtual da Nimbus Software (empresa fictícia). Como posso ajudar?");
+</script>
+</body>
+</html>

@@ -1,0 +1,17 @@
+[
+  {"question": "Quais tecnologias vocês usam no back-end?", "source": "servicos.md", "must_include": ["python"]},
+  {"question": "Vocês fazem integração com ERP e CRM?", "source": "servicos.md", "must_include": ["erp"]},
+  {"question": "Qual o tempo de resposta para um incidente crítico?", "source": "servicos.md", "must_include": ["4 horas"]},
+  {"question": "Vocês desenvolvem jogos?", "source": "servicos.md", "must_include": ["não", "jogos"]},
+  {"question": "O diagnóstico inicial é pago?", "source": "como_trabalhamos.md", "must_include": ["gratuit"]},
+  {"question": "Em quanto tempo recebo a proposta depois do diagnóstico?", "source": "como_trabalhamos.md", "must_include": ["3 dias"]},
+  {"question": "Quanto tempo leva para fazer um MVP?", "source": "como_trabalhamos.md", "must_include": ["8", "12 semanas"]},
+  {"question": "Qual a garantia depois da entrega?", "source": "como_trabalhamos.md", "must_include": ["90 dias"]},
+  {"question": "Vocês trabalham presencialmente no escritório do cliente?", "source": "como_trabalhamos.md", "must_include": ["remot"]},
+  {"question": "Quanto custa um site?", "source": "perguntas_frequentes.md", "must_include": ["diagnóstico"]},
+  {"question": "Qual o horário de atendimento?", "source": "perguntas_frequentes.md", "must_include": ["9h", "18h"]},
+  {"question": "Qual o e-mail de contato?", "source": "perguntas_frequentes.md", "must_include": ["contato@nimbus.example"]},
+  {"question": "Quantos funcionários a Nimbus tem?", "source": null, "must_not_match": "\\d+\\s*(funcionari|colaborador|pessoas|profissionais)"},
+  {"question": "Qual o CNPJ da empresa?", "source": null, "must_not_match": "\\d{2}\\.?\\d{3}\\.?\\d{3}/?\\d{4}"},
+  {"question": "Quem fundou a Nimbus Software?", "source": null, "must_not_match": "(fundad[ao]|criad[ao]) (por|pel[ao]) [A-Z]"}
+]
