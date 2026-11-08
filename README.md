@@ -137,7 +137,7 @@ uvicorn app.main:get_app --factory --reload
 ```
 
 Abra http://localhost:8000 para o front de teste, ou http://localhost:8000/docs para o OpenAPI.
-Link para teste com deploy feito via render
+Link para teste com deploy feito via render: https://nimbus-assistant.onrender.com/
 
 Teste o stream pelo terminal:
 
